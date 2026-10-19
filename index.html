@@ -1,0 +1,482 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neon Air Drawing Studio</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 28px 18px;
+      background: #080914;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 8px 0;
+      font-size: clamp(28px, 5vw, 44px);
+      letter-spacing: 1px;
+      text-shadow: 0 0 18px #00eaff;
+    }
+
+    .subtitle {
+      color: #a9b0c9;
+      margin-bottom: 25px;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 18px auto;
+      max-width: 900px;
+    }
+
+    button {
+      padding: 11px 16px;
+      border: 1px solid #343b5b;
+      border-radius: 10px;
+      background: #151a30;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      border-color: #00eaff;
+      box-shadow: 0 0 12px #00eaff55;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .color {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border-radius: 50%;
+      border: 2px solid #ffffff88;
+    }
+
+    .color.selected {
+      outline: 2px solid white;
+      outline-offset: 3px;
+    }
+
+    .rainbow.active {
+      background: #4a206d;
+      border-color: #ff62df;
+      box-shadow: 0 0 14px #ff62df77;
+    }
+
+    .workspace {
+      position: relative;
+      width: min(900px, 100%);
+      aspect-ratio: 16 / 9;
+      margin: 22px auto 0;
+      overflow: hidden;
+      border: 1px solid #384363;
+      border-radius: 18px;
+      background: #050711;
+      box-shadow: 0 0 25px #00d9ff15;
+    }
+
+    #camera,
+    #canvas {
+      position: absolute;
+      inset: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+      transform: scaleX(-1);
+    }
+
+    #camera {
+      object-fit: cover;
+      opacity: 0.48;
+    }
+
+    #canvas {
+      z-index: 2;
+    }
+
+    .camera-label {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 3;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: #090b19cc;
+      color: #8ffaff;
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    #status {
+      min-height: 22px;
+      margin: 17px auto 8px;
+      color: #9cefff;
+    }
+
+    .instructions {
+      max-width: 700px;
+      margin: 20px auto;
+      color: #a9b0c9;
+      line-height: 1.8;
+      font-size: 14px;
+    }
+
+    .instructions strong {
+      color: #ffffff;
+    }
+
+    .footer {
+      color: #6d7697;
+      font-size: 12px;
+      margin-top: 28px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>NEON AIR DRAWING ✨</h1>
+
+  <p class="subtitle">
+    Turn your hand movements into glowing digital art.
+  </p>
+
+  <div class="toolbar">
+    <button id="startButton">Start Camera</button>
+
+    <button class="color selected"
+      data-color="#00f5ff"
+      style="background:#00f5ff"
+      aria-label="Cyan"></button>
+
+    <button class="color"
+      data-color="#ff35c8"
+      style="background:#ff35c8"
+      aria-label="Pink"></button>
+
+    <button class="color"
+      data-color="#a8ff3e"
+      style="background:#a8ff3e"
+      aria-label="Green"></button>
+
+    <button class="color"
+      data-color="#b58cff"
+      style="background:#b58cff"
+      aria-label="Purple"></button>
+
+    <button class="color"
+      data-color="#ffffff"
+      style="background:#ffffff"
+      aria-label="White"></button>
+
+    <button id="rainbowButton" class="rainbow">
+      🌈 Rainbow: OFF
+    </button>
+
+    <button id="clearButton">Clear Canvas</button>
+  </div>
+
+  <div class="workspace">
+    <video id="camera" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="camera-label">● AIR DRAWING STUDIO</div>
+  </div>
+
+  <p id="status">Click Start Camera to begin.</p>
+
+  <div class="instructions">
+    <strong>How to draw:</strong>
+    Show your hand to the webcam. Raise your index finger
+    and curl your middle finger. Move your hand to draw!<br>
+    Select a color or turn on Rainbow mode.
+    Click Clear Canvas to start again.
+  </div>
+
+  <p class="footer">
+    Built with JavaScript, MediaPipe and a little creativity 💜
+  </p>
+
+  <script type="module">
+    import {
+      FilesetResolver,
+      HandLandmarker
+    } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+    const video = document.getElementById("camera");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const status = document.getElementById("status");
+
+    const startButton = document.getElementById("startButton");
+    const clearButton = document.getElementById("clearButton");
+    const rainbowButton = document.getElementById("rainbowButton");
+
+    let handLandmarker = null;
+    let cameraStream = null;
+    let running = false;
+    let starting = false;
+    let lastVideoTime = -1;
+    let previousPoint = null;
+
+    let currentColor = "#00f5ff";
+    let rainbowMode = false;
+    let hue = 0;
+
+    // Keep the canvas sharp on high-resolution screens.
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+
+      canvas.width = Math.round(rect.width * ratio);
+      canvas.height = Math.round(rect.height * ratio);
+
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      previousPoint = null;
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // Select a neon pen color.
+    document.querySelectorAll(".color").forEach(button => {
+      button.addEventListener("click", () => {
+        currentColor = button.dataset.color;
+        rainbowMode = false;
+        previousPoint = null;
+
+        rainbowButton.textContent = "🌈 Rainbow: OFF";
+        rainbowButton.classList.remove("active");
+
+        document.querySelectorAll(".color").forEach(item => {
+          item.classList.remove("selected");
+        });
+
+        button.classList.add("selected");
+        status.textContent = "Pen color changed!";
+      });
+    });
+
+    // Switch rainbow drawing on or off.
+    rainbowButton.addEventListener("click", () => {
+      rainbowMode = !rainbowMode;
+      previousPoint = null;
+
+      rainbowButton.textContent = rainbowMode
+        ? "🌈 Rainbow: ON"
+        : "🌈 Rainbow: OFF";
+
+      rainbowButton.classList.toggle("active", rainbowMode);
+
+      document.querySelectorAll(".color").forEach(button => {
+        button.classList.remove("selected");
+      });
+
+      status.textContent = rainbowMode
+        ? "Rainbow mode activated! 🌈"
+        : "Neon color mode activated.";
+    });
+
+    // Clear all existing strokes.
+    clearButton.addEventListener("click", () => {
+      const rect = canvas.getBoundingClientRect();
+
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      previousPoint = null;
+
+      status.textContent = "Canvas cleared. Start creating!";
+    });
+
+    // Load the hand-tracking model and webcam.
+    async function startCamera() {
+      if (starting || running) return;
+
+      starting = true;
+      startButton.disabled = true;
+      status.textContent = "Loading hand tracking model...";
+
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+        );
+
+        handLandmarker = await HandLandmarker.createFromOptions(
+          vision,
+          {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+            },
+            runningMode: "VIDEO",
+            numHands: 1
+          }
+        );
+
+        status.textContent = "Opening your webcam...";
+
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+
+        video.srcObject = cameraStream;
+        await video.play();
+
+        resizeCanvas();
+
+        running = true;
+        starting = false;
+
+        startButton.textContent = "Camera Running";
+        startButton.disabled = true;
+
+        status.textContent =
+          "Show your hand. Raise your index finger to draw!";
+
+        requestAnimationFrame(drawFrame);
+
+      } catch (error) {
+        console.error("Camera or model error:", error);
+
+        status.textContent =
+          "Could not start. Check camera permission and internet.";
+
+        startButton.disabled = false;
+        starting = false;
+      }
+    }
+
+    // Draw a glowing line between two points.
+    function drawNeonLine(from, to) {
+      const color = rainbowMode
+        ? `hsl(${hue}, 100%, 60%)`
+        : currentColor;
+
+      // Outer, soft glow.
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 12;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 24;
+      ctx.stroke();
+
+      // Brighter inner glow.
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 5;
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+
+      // Fine bright center.
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.shadowBlur = 4;
+      ctx.stroke();
+
+      ctx.restore();
+
+      if (rainbowMode) {
+        hue = (hue + 3) % 360;
+      }
+    }
+
+    // Process each new camera frame.
+    function drawFrame() {
+      if (!running) return;
+
+      if (
+        video.readyState >= 2 &&
+        video.currentTime !== lastVideoTime
+      ) {
+        const results = handLandmarker.detectForVideo(
+          video,
+          performance.now()
+        );
+
+        lastVideoTime = video.currentTime;
+
+        if (results.landmarks.length > 0) {
+          const landmarks = results.landmarks[0];
+
+          // Landmark 8: index fingertip.
+          // Landmark 6: index middle joint.
+          // Landmark 12: middle fingertip.
+          // Landmark 10: middle finger joint.
+
+          const indexUp =
+            landmarks[8].y < landmarks[6].y;
+
+          const middleDown =
+            landmarks[12].y > landmarks[10].y;
+
+          if (indexUp && middleDown) {
+            const point = {
+              x: landmarks[8].x * canvas.clientWidth,
+              y: landmarks[8].y * canvas.clientHeight
+            };
+
+            if (previousPoint) {
+              drawNeonLine(previousPoint, point);
+            }
+
+            previousPoint = point;
+            status.textContent = rainbowMode
+              ? "Drawing rainbow neon! 🌈"
+              : "Drawing neon! ✨";
+
+          } else {
+            previousPoint = null;
+            status.textContent =
+              "Raise your index finger and curl your middle finger.";
+          }
+
+        } else {
+          previousPoint = null;
+          status.textContent = "Show your hand to the camera.";
+        }
+      }
+
+      requestAnimationFrame(drawFrame);
+    }
+
+    startButton.addEventListener("click", startCamera);
+  </script>
+
+</body>
+</html>
